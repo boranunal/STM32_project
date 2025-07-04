@@ -108,6 +108,12 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
     	rcv = 1;
     	HAL_I2C_Master_Transmit_IT(&hi2c3, BMP180WrAddr, readAddr, 1);
     }
+    else if(htim->Instance == TIM4){
+    	if(read == 0) {
+	    	HAL_TIM_Base_Stop_IT(&htim4);
+    		read = 1;
+    	}
+    }
 }
 
 

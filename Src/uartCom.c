@@ -8,15 +8,24 @@
 #include <string.h>
 #include "uartCom.h"
 
-extern UART_HandleTypeDef huart2;
 
+volatile uint8_t txCplt = 0;
+
+void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart){
+	if(huart->Instance == USART2){
+		HAL_NVIC_EnableIRQ(TIM4_IRQn);
+	}
+}
 
 void print2sh(int32_t x, uint8_t mode){
-	uint8_t buffer[20];
+	uint8_t buffer[32];
 	if (mode == 0)
-		sprintf(buffer, "temp: %.2f °C\r\n", x/10.0);
+		sprintf(buffer, "temp: %.2f °C", x/10.0);
 	else
-		sprintf(buffer, "pres: %ld Pa\r\n", x);
+		sprintf(buffer, "\t\t\tpres: %ld Pa\r", x);
 
+	HAL_NVIC_DisableIRQ(TIM4_IRQn);
 	HAL_UART_Transmit_DMA(&huart2, buffer, strlen(buffer));
+
+
 }
