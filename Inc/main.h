@@ -40,12 +40,12 @@ extern "C" {
 extern I2C_HandleTypeDef hi2c3;
 
 extern TIM_HandleTypeDef htim3;
-extern TIM_HandleTypeDef htim4;
 
 extern UART_HandleTypeDef huart2;
 extern DMA_HandleTypeDef hdma_usart2_tx;
 
-extern volatile uint8_t read;
+extern int calib_data[11];
+
 /* USER CODE END ET */
 
 /* Exported constants --------------------------------------------------------*/

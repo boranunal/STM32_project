@@ -10,7 +10,6 @@
 
 
 #include "stm32f4xx_hal.h"
-#include "main.h"
 
 void print2sh(int32_t x, uint8_t mode);
 
