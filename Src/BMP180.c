@@ -1,9 +1,5 @@
 #include <BMP180.h>
 
-extern TIM_HandleTypeDef htim2;
-extern I2C_HandleTypeDef hi2c3;
-extern UART_HandleTypeDef huart2;
-
 BMP180_EEPROM _bmp180_calib;
 volatile uint8_t rawData[2];
 volatile uint8_t rawDataReady = 0;
@@ -38,10 +34,10 @@ void BMP180_init(){
 	_bmp180_calib.MD = calib_buff[20] << 8 | calib_buff[21];
 }
 
-void readRawData(uint8_t read){
+void readRawData(uint8_t mode){
 	uint8_t tx[2];
 	tx[0] = 0xF4;	// ctrl reg
-	tx[1] = read ? 0x34+(oss << 6) : 0x2E;	// read press or temp
+	tx[1] = mode ? 0x34+(oss << 6) : 0x2E;	// read press or temp
 	wait = 1;
 	HAL_I2C_Master_Transmit_IT(&hi2c3, BMP180WrAddr, tx, 2);
 }
@@ -74,33 +70,6 @@ int32_t calcPres(int32_t UP){
 	return p;
 }
 
-int32_t readTP(uint8_t read){
-	int32_t ret;
-	switch(read){
-		case 0:
-			readRawData(0);
-			while(!rawDataReady);
-			ret = calcTemp(UD);
-			rawDataReady = 0;
-			break;
-		case 1:
-			readRawData(0);
-			while(!rawDataReady);
-			calcTemp(UD);
-			rawDataReady = 0;
-			readRawData(1);
-			while(!rawDataReady);
-			ret = calcPres(UD);
-			rawDataReady = 0;
-			break;
-		default:
-			ret = 0;
-			rawDataReady = 0;
-			break;
-	}
-
-	return ret;
-}
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
     if (htim->Instance == TIM3){
@@ -108,6 +77,10 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
     	rcv = 1;
     	HAL_I2C_Master_Transmit_IT(&hi2c3, BMP180WrAddr, readAddr, 1);
     }
+    if (htim->Instance == TIM4){
+    	HAL_TIM_Base_Stop_IT(&htim4);
+       	read = 1;
+       }
 }
 
 
