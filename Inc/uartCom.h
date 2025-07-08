@@ -12,7 +12,8 @@
 #include "stm32f4xx_hal.h"
 #include "main.h"
 
-void print2sh(int32_t x, uint8_t mode);
+void printTP2sh(int32_t x, uint8_t mode);
+void print2sh(char * buffer);
 void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart);
 
 #endif /* INC_UARTCOM_H_ */

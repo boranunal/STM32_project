@@ -9,16 +9,16 @@ volatile uint8_t wait = 0;
 volatile uint8_t rcv = 0;
 int32_t b5;
 const uint8_t readAddr[] = {0xF6};
-const uint8_t msgOK[] = "OK!\r\n";
-const uint8_t msgER[] = "ERR\r\n";
+const uint8_t msgOK[] = "BMP180: INIT DONE!\r\n";
+const uint8_t msgER[] = "BMP180: INIT ERROR \r\n";
 void BMP180_init(){
 	uint8_t calib_buff[22];
 	uint8_t i2cRxBuffer[1] = {0};
 	HAL_I2C_Mem_Read(&hi2c3, BMP180ReadAddr, 0xD0, 1, i2cRxBuffer, 1, 100);
 	if(i2cRxBuffer[0] == 0x55){
-		HAL_UART_Transmit_DMA(&huart2, msgOK, 5);
+		print2sh("BMP180: INIT DONE!\r\n");
 	}
-	else HAL_UART_Transmit_DMA(&huart2, msgER, 5);
+	else print2sh("BMP180: INIT ERROR \r\n");
 
 	HAL_I2C_Mem_Read(&hi2c3, BMP180ReadAddr, 0xAA, 1, calib_buff, 22, 1000);
 	_bmp180_calib.AC1 = calib_buff[0] << 8 | calib_buff[1];

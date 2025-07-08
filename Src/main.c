@@ -53,6 +53,28 @@ DMA_HandleTypeDef hdma_usart2_tx;
 
 /* USER CODE BEGIN PV */
 
+W5500_Config_t w5500_net_config = {
+		.hspi = &hspi2,
+		.cs_port = W5500_CS_GPIO_Port,
+		.cs_pin = W5500_CS_Pin,
+		.reset_port = W5500_RESET_GPIO_Port,
+		.reset_pin = W5500_RESET_Pin,
+		.mac = {0x02, 0x00, 0x00, 0x00, 0x00, 0x01},
+		.ip = {192, 168, 1, 101},
+		.subnet = {255, 255, 255, 0},
+		.gateway = {0, 0, 0, 0}
+};
+
+W5500_Handle_t hw5500;
+
+W5500_Sock_Config_t sock_config = {
+		.Sn = 1,
+		.protocol = STANDART_TCP,
+		.port = 80,
+		.rxbuffer = 4,
+		.txbuffer = 4,
+		.tos = 0
+};
 
 uint8_t mode = 0;
 int32_t CD;
@@ -106,7 +128,7 @@ int main(void)
   SystemClock_Config();
 
   /* USER CODE BEGIN SysInit */
-  HAL_NVIC_SetPriorityGrouping(NVIC_PRIORITYGROUP_2);
+
   /* USER CODE END SysInit */
 
   /* Initialize all configured peripherals */
@@ -119,6 +141,24 @@ int main(void)
   MX_SPI2_Init();
   /* USER CODE BEGIN 2 */
   BMP180_init();
+  HAL_StatusTypeDef status = W5500_Init(&hw5500, &w5500_net_config);
+  status = W5500_Socket_Open(&hw5500, &sock_config);
+  char msg[40];
+  if(status == HAL_OK){
+	  snprintf(msg, sizeof(msg), "SOCKET %d OPENED AT PORT %d!\r\n", sock_config.Sn, sock_config.port);
+  }
+  else{
+	  snprintf(msg, sizeof(msg), "SOCKET %d FAILED TO OPEN!\r\n", sock_config.Sn);
+  }
+  print2sh(msg);
+  status = W5500_Socket_Listen(&hw5500, &sock_config);
+  if(status == HAL_OK){
+	  snprintf(msg, sizeof(msg), "SOCKET %d LISTENING at PORT %d!\r\n", sock_config.Sn, sock_config.port);
+  }
+  else{
+	  snprintf(msg, sizeof(msg), "SOCKET %d LISTEN CMD FAILED!\r\n", sock_config.Sn);
+  }
+  print2sh(msg);
   HAL_TIM_Base_Start_IT(&htim4);
   /* USER CODE END 2 */
 
@@ -136,7 +176,7 @@ int main(void)
 	  }
 	  if(rawDataReady == 1){
 		  CD = (mode == 0) ? calcPres(UD) : calcTemp(UD);
-		  print2sh(CD, (mode == 0) ? 1 : 0);
+		  printTP2sh(CD, (mode == 0) ? 1 : 0);
 		  rawDataReady = 0;
 		  HAL_TIM_Base_Start_IT(&htim4);
 	  }
@@ -428,7 +468,10 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOA, W5500_CS_Pin|LD2_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOA, W5500_CS_Pin|W5500_RESET_Pin, GPIO_PIN_SET);
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin : B1_Pin */
   GPIO_InitStruct.Pin = B1_Pin;
@@ -449,6 +492,13 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(LD2_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : W5500_RESET_Pin */
+  GPIO_InitStruct.Pin = W5500_RESET_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_MEDIUM;
+  HAL_GPIO_Init(W5500_RESET_GPIO_Port, &GPIO_InitStruct);
 
   /* EXTI interrupt init*/
   HAL_NVIC_SetPriority(EXTI15_10_IRQn, 0, 0);

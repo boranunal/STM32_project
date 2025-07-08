@@ -8,20 +8,30 @@
 #include <string.h>
 #include "uartCom.h"
 
+volatile uint8_t tx_finished = 0;
 
-void print2sh(int32_t x, uint8_t mode){
+void printTP2sh(int32_t x, uint8_t mode){
 	uint8_t buffer[32];
 	if (mode == 0)
-		sprintf(buffer, "temp: %.2f °C\t\t\t", x/10.0);
+		snprintf(buffer, sizeof(buffer), "temp: %.2f °C\t\t\t", x/10.0);
 	else
-		sprintf(buffer, "pres: %ld Pa\t\t\r", x);
+		snprintf(buffer, sizeof(buffer), "pres: %ld Pa\t\t\r", x);
 
-	HAL_NVIC_DisableIRQ(TIM4_IRQn);
+	while(tx_finished == 1);
+	tx_finished = 1;
 	HAL_UART_Transmit_DMA(&huart2, buffer, strlen(buffer));
+}
+
+void print2sh(char * str){
+	while(tx_finished == 1);
+	tx_finished = 1;
+	HAL_UART_Transmit_DMA(&huart2, str, strlen(str));
+
+
 }
 
 void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart){
 	if(huart->Instance == USART2){
-		HAL_NVIC_EnableIRQ(TIM4_IRQn);
+		tx_finished = 0;
 	}
 }
