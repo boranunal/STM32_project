@@ -34,6 +34,8 @@ extern "C" {
 #include "BMP180.h"
 #include "uartCom.h"
 #include "w5500_dma.h"
+#include <stdlib.h>
+#include <stdio.h>
 /* USER CODE END Includes */
 
 /* Exported types ------------------------------------------------------------*/
@@ -79,6 +81,9 @@ void Error_Handler(void);
 #define LD2_GPIO_Port GPIOA
 #define W5500_RESET_Pin GPIO_PIN_6
 #define W5500_RESET_GPIO_Port GPIOA
+#define W5500_Int_Pin GPIO_PIN_8
+#define W5500_Int_GPIO_Port GPIOC
+#define W5500_Int_EXTI_IRQn EXTI9_5_IRQn
 #define TMS_Pin GPIO_PIN_13
 #define TMS_GPIO_Port GPIOA
 #define TCK_Pin GPIO_PIN_14

@@ -8,6 +8,7 @@
 #include <string.h>
 #include "uartCom.h"
 
+HAL_StatusTypeDef status;
 volatile uint8_t tx_finished = 0;
 
 void printTP2sh(int32_t x, uint8_t mode){
@@ -23,10 +24,10 @@ void printTP2sh(int32_t x, uint8_t mode){
 }
 
 void print2sh(char * str){
+
 	while(tx_finished == 1);
 	tx_finished = 1;
 	HAL_UART_Transmit_DMA(&huart2, str, strlen(str));
-
 
 }
 

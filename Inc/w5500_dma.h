@@ -13,7 +13,7 @@
 #include "uartCom.h"
 #include <string.h>
 
-#define SPI_TIMEOUT 5000
+#define SPI_TIMEOUT 1000
 
 #define STANDART_TCP 0x01
 
@@ -108,6 +108,8 @@
 #define SOCK_MACRAW_Status     0x42
 #define SOCK_PPPOE_Status      0x5F
 
+// IR bits
+
 // DMA Transfer States
 typedef enum {
     W5500_DMA_IDLE,
@@ -148,34 +150,39 @@ typedef struct{
 	uint8_t txbuffer; 	// in kb
 	uint8_t tos;		// type of service 0 for standart operation, reference: http://www.iana.org/assignments/ip-parameters/ip-parameters.xhtml
 } W5500_Sock_Config_t;
+
 // Function Prototypes
 HAL_StatusTypeDef W5500_Init(W5500_Handle_t *hw5500, W5500_Config_t *config);
 HAL_StatusTypeDef W5500_Reset(W5500_Handle_t *hw5500);
-HAL_StatusTypeDef W5500_ReadReg_DMA(W5500_Handle_t *hw5500, uint32_t addr, uint8_t *data, uint16_t len);
-HAL_StatusTypeDef W5500_WriteReg_DMA(W5500_Handle_t *hw5500, uint32_t addr, uint8_t *data, uint16_t len);
+HAL_StatusTypeDef W5500_ReadReg_DMA(W5500_Handle_t *hw5500, uint32_t addr, uint8_t bsb, uint8_t *data, uint16_t len);
+HAL_StatusTypeDef W5500_WriteReg_DMA(W5500_Handle_t *hw5500, uint32_t addr, uint8_t bsb, uint8_t *data, uint16_t len);
 HAL_StatusTypeDef W5500_ReadReg_Blocking(W5500_Handle_t *hw5500, uint32_t addr, uint8_t bsb, uint8_t *data, uint16_t len);
 HAL_StatusTypeDef W5500_WriteReg_Blocking(W5500_Handle_t *hw5500, uint32_t addr, uint8_t bsb, uint8_t *data, uint16_t len);
 
 // Socket Management
 HAL_StatusTypeDef W5500_Socket_Open(W5500_Handle_t *hw5500, W5500_Sock_Config_t *sock_config);
-HAL_StatusTypeDef W5500_Socket_Close(W5500_Handle_t *hw5500, uint8_t sock);
+HAL_StatusTypeDef W5500_Socket_Close(W5500_Handle_t *hw5500, W5500_Sock_Config_t *sock_config);
 HAL_StatusTypeDef W5500_Socket_Listen(W5500_Handle_t *hw5500, W5500_Sock_Config_t *sock_config);
-uint8_t W5500_Socket_GetStatus(W5500_Handle_t *hw5500, uint8_t sock);
-uint16_t W5500_Socket_GetRxSize(W5500_Handle_t *hw5500, uint8_t sock);
-uint16_t W5500_Socket_GetTxFreeSize(W5500_Handle_t *hw5500, uint8_t sock);
+uint8_t W5500_Socket_GetStatus(W5500_Handle_t *hw5500, W5500_Sock_Config_t *sock_config);
+uint16_t W5500_Socket_GetRcvdSize(W5500_Handle_t *hw5500, W5500_Sock_Config_t *sock_config);
+uint16_t W5500_Socket_GetTxFreeSize(W5500_Handle_t *hw5500, W5500_Sock_Config_t *sock_config);
+HAL_StatusTypeDef W5500_Socket_SetTXWR(W5500_Handle_t *hw5500, W5500_Sock_Config_t *sock_config, uint16_t newTXWR);
+uint16_t W5500_Socket_GetRXRD(W5500_Handle_t *hw5500, W5500_Sock_Config_t *sock_config);
+HAL_StatusTypeDef W5500_Socket_SetRXRD(W5500_Handle_t *hw5500, W5500_Sock_Config_t *sock_config, uint16_t newRXRD);
+HAL_StatusTypeDef W5500_Socket_IR_Enable(W5500_Handle_t *hw5500, W5500_Sock_Config_t *sock_config, uint8_t value);
+HAL_StatusTypeDef W5500_Socket_IR_Disable(W5500_Handle_t *hw5500, W5500_Sock_Config_t *sock_config, uint8_t value)
 
-// Data Transfer
-HAL_StatusTypeDef W5500_Socket_Send(W5500_Handle_t *hw5500, uint8_t sock, uint8_t *data, uint16_t len);
-HAL_StatusTypeDef W5500_Socket_Recv(W5500_Handle_t *hw5500, uint8_t sock, uint8_t *data, uint16_t len);
-
+// Common Register Functions
+HAL_StatusTypeDef W55000_SetINTLEVEL(W5500_Handle_t *hw5500, uint16_t intlevel);
+HAL_StatusTypeDef W5500_SetRTR(W5500_Handle_t *hw5500, uint16_t value);
+HAL_StatusTypeDef W5500_SetRCR(W5500_Handle_t *hw5500, uint8_t value);
+HAL_StatusTypeDef W5500_SIR_Enable(W5500_Handle_t *hw5500, W5500_Sock_Config_t *sock_config);
+HAL_StatusTypeDef W5500_SIR_Disable(W5500_Handle_t *hw5500, W5500_Sock_Config_t *sock_config);
+uint8_t W5500_GetSIR(W5500_Handle_t *hw5500);
+HAL_StatusTypeDef W5500_ClearSIR(W5500_Handle_t *hw5500, W5500_Sock_Config_t *sock_config);
 // Interrupt Callbacks
 void W5500_SPI_TxRxCpltCallback(W5500_Handle_t *hw5500);
 void W5500_SPI_ErrorCallback(W5500_Handle_t *hw5500);
-
-// Utility Functions
-uint32_t W5500_GetSocketRegAddr(uint8_t sock, uint16_t reg);
-uint32_t W5500_GetSocketTxBufAddr(uint8_t sock);
-uint32_t W5500_GetSocketRxBufAddr(uint8_t sock);
 
 
 #endif /* INC_W5500_DMA_H_ */
