@@ -1,14 +1,14 @@
 #include <BMP180.h>
 
 BMP180_EEPROM _bmp180_calib;
-volatile uint8_t rawData[2];
+uint8_t rawData[2];
 volatile uint8_t rawDataReady = 0;
 volatile int32_t UD;
 uint8_t oss = 0;
 volatile uint8_t wait = 0;
 volatile uint8_t rcv = 0;
 int32_t b5;
-const uint8_t readAddr[] = {0xF6};
+uint8_t readAddr[] = {0xF6};
 const uint8_t msgOK[] = "BMP180: INIT DONE!\r\n";
 const uint8_t msgER[] = "BMP180: INIT ERROR \r\n";
 void BMP180_init(){

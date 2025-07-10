@@ -44,6 +44,8 @@
 I2C_HandleTypeDef hi2c3;
 
 SPI_HandleTypeDef hspi2;
+DMA_HandleTypeDef hdma_spi2_rx;
+DMA_HandleTypeDef hdma_spi2_tx;
 
 TIM_HandleTypeDef htim3;
 TIM_HandleTypeDef htim4;
@@ -67,7 +69,16 @@ W5500_Config_t w5500_net_config = {
 
 W5500_Handle_t hw5500;
 
-W5500_Sock_Config_t sock_config = {
+W5500_Sock_Interrupt_Status_t sock1_it = {
+		.send_ok = 0,
+		.timeout = 0,
+		.recv = 0,
+		.discon = 0,
+		.con = 0,
+		.state = 0
+};
+
+W5500_Sock_Handle_t hsoc1 = {
 		.Sn = 1,
 		.protocol = STANDART_TCP,
 		.port = 80,
@@ -76,10 +87,12 @@ W5500_Sock_Config_t sock_config = {
 		.tos = 0
 };
 
+
 uint8_t mode = 0;
 int32_t CD;
-volatile uint8_t read = 0;
-
+uint8_t W5500_it = 0;
+uint8_t read = 0;
+uint8_t dma_it = 0;
 
 /* USER CODE END PV */
 
@@ -100,11 +113,18 @@ static void MX_SPI2_Init(void);
 /* USER CODE BEGIN 0 */
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
     if(GPIO_Pin == B1_Pin){
-    	print2sh("DONT PUSH THE BUTTON!!");
+    	print2sh("DONT PUSH THE BUTTON!!\r");
     }
     if(GPIO_Pin == W5500_Int_Pin){
     	// w5500 interrupt control
+    	W5500_it = 1;
     }
+}
+
+void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *hspi){
+	if(hspi->Instance == SPI2){
+		dma_it = 1;
+	}
 }
 /* USER CODE END 0 */
 
@@ -116,7 +136,7 @@ int main(void)
 {
 
   /* USER CODE BEGIN 1 */
-
+HAL_StatusTypeDef hal_status;
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -145,38 +165,43 @@ int main(void)
   /* USER CODE BEGIN 2 */
   BMP180_init();
   HAL_StatusTypeDef status = W5500_Init(&hw5500, &w5500_net_config);
-  status = W5500_Socket_Open(&hw5500, &sock_config);
-  char* msg1 = malloc(sizeof(char)*48);
-  char* msg2 = malloc(sizeof(char)*48);
-  if(msg1 != NULL){
-	  if(status == HAL_OK){
-		  snprintf(msg1, 48, "SOCKET %d OPENED AT PORT %d!\r\n", sock_config.Sn, sock_config.port);
-	  }
-	  else{
-		  snprintf(msg1, 48, "SOCKET %d FAILED TO OPEN!\r\n", sock_config.Sn);
-	  }
-	  print2sh(msg1);
+  memcpy(&hsoc1.it, &sock1_it, sizeof(W5500_Sock_Interrupt_Status_t)); // socket type init
+  status = W5500_Socket_Open(&hw5500, &hsoc1);
+  char msg1[48];
+  char msg2[48];
+
+  if(status == HAL_OK){
+	  snprintf(msg1, 48, "SOCKET %d OPENED AT PORT %d!\r\n", hsoc1.Sn, hsoc1.port);
   }
-  status = W5500_Socket_Listen(&hw5500, &sock_config);
-  if(msg1 != NULL){
-	  if(status == HAL_OK){
-		  snprintf(msg2, 48, "SOCKET %d LISTENING AT PORT %d!\r\n", sock_config.Sn, sock_config.port);
-	  }
-	  else{
-		  snprintf(msg2, 48, "SOCKET %d LISTEN CMD FAILED!\r\n", sock_config.Sn);
-	  }
-	  print2sh(msg2);
+  else{
+	  snprintf(msg1, 48, "SOCKET %d FAILED TO OPEN!\r\n", hsoc1.Sn);
   }
+  print2sh(msg1);
+
+  status = W5500_Socket_Listen(&hw5500, &hsoc1);
+
+  if(status == HAL_OK){
+	  snprintf(msg2, 48, "SOCKET %d LISTENING AT PORT %d!\r\n", hsoc1.Sn, hsoc1.port);
+  }
+  else{
+	  snprintf(msg2, 48, "SOCKET %d LISTEN CMD FAILED!\r\n", hsoc1.Sn);
+  }
+  print2sh(msg2);
+
   HAL_TIM_Base_Start_IT(&htim4);
+  W5500_SIR_Enable(&hw5500, &hsoc1);
+  //W5500_Socket_IR_Disable(&hw5500, &hsoc1, 0xFF);
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  free(msg1);
-  HAL_Delay(30);
-  free(msg2);
+  uint8_t sock_st, sock_it;
   while (1)
   {
+	  if(dma_it == 1){
+		  W5500_SPI_TxRxCpltCallback(&hw5500, &hsoc1);
+		  dma_it = 0;
+	  }
 	  if(read == 1){
 		  if(mode == 0 || mode == 1){
 			  readRawData(mode);
@@ -190,6 +215,40 @@ int main(void)
 		  printTP2sh(CD, (mode == 0) ? 1 : 0);
 		  rawDataReady = 0;
 		  HAL_TIM_Base_Start_IT(&htim4);
+	  }
+	  if(W5500_it == 1){
+
+		  sock_it = W5500_Socket_IR_Get(&hw5500, &hsoc1);
+		  hal_status = W5500_Socket_IntStatus_Update(&hw5500, &hsoc1);
+		  if(hal_status != HAL_OK) break;
+		  W5500_it = 0;
+		  //print2sh("interrupt: ");
+		  //snprintf(msg1, 48, "0x%02X\r\n", sock_it);
+		  //print2sh(msg1);
+
+		  switch(hsoc1.it.state){
+		  case SOCK_LISTEN_Status:
+			  break;
+		  case SOCK_ESTABLISHED_Status:
+			  break;
+		  case SOCK_CLOSE_WAIT_Status:
+			  break;;
+		  case SOCK_CLOSED_Status:
+			  break;
+		  default:
+//			  strcpy(msg2, "OTHER\r\n");
+//			  print2sh(msg2);
+			  break;
+		  }
+
+		  W5500_Socket_SM(&hw5500, &hsoc1);
+	  }
+	  /*
+	   * If data is received and processed, this code is run.
+	   * Respond to client here.
+	   */
+	  if(hsoc1.it.recv & 0x04){
+
 	  }
 
     /* USER CODE END WHILE */
@@ -454,6 +513,12 @@ static void MX_DMA_Init(void)
   __HAL_RCC_DMA1_CLK_ENABLE();
 
   /* DMA interrupt init */
+  /* DMA1_Stream3_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Stream3_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Stream3_IRQn);
+  /* DMA1_Stream4_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Stream4_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Stream4_IRQn);
   /* DMA1_Stream6_IRQn interrupt configuration */
   HAL_NVIC_SetPriority(DMA1_Stream6_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(DMA1_Stream6_IRQn);
