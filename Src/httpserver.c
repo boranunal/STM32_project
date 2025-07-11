@@ -90,7 +90,7 @@ int getResHttp(char *req, char *res, SensorData_t *sensor_data){
 	int body_len, total_len;
 	//print2sh(req);
 	if (strncmp(req, "GET / ", 6) == 0){
-		body_len = snprintf(body, 256, html, sensor_data->temperature/10.0, sensor_data->pressure);
+		body_len = snprintf(body, 256, html, sensor_data->temperature, sensor_data->pressure);
 		total_len = snprintf(res, 512, http_response, body_len, body);
 	}
 	else{

@@ -47,7 +47,6 @@ extern TIM_HandleTypeDef htim4;
 extern UART_HandleTypeDef huart2;
 extern DMA_HandleTypeDef hdma_usart2_tx;
 
-extern uint8_t read;
 
 /* USER CODE END ET */
 

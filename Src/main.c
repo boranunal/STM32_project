@@ -54,6 +54,21 @@ UART_HandleTypeDef huart2;
 DMA_HandleTypeDef hdma_usart2_tx;
 
 /* USER CODE BEGIN PV */
+SensorData_t sensor_data;
+uint8_t W5500_it = 0;
+uint8_t dma_it = 0;
+uint8_t raw_data[2];
+BMP180_Handle_t hbmp180 = {
+		.hi2c = &hi2c3,
+		.htim = &htim3,
+		.raw_data = raw_data,
+		.ut = 0,
+		.up = 0,
+		.b5 = 0,
+		.state = 0,
+		.temp_ready = 0,
+		.pres_ready = 0
+};
 
 W5500_Config_t w5500_net_config = {
 		.hspi = &hspi2,
@@ -87,16 +102,7 @@ W5500_Sock_Handle_t hsoc1 = {
 		.txbuf_size = 4,
 		.tos = 0
 };
-
-
-uint8_t mode = 0;
-int32_t UT, UP;
-SensorData_t sensor_data;
-uint8_t W5500_it = 0;
-uint8_t read = 0;
-uint8_t temp_ready, pres_ready = 0;
-uint8_t dma_it = 0;
-
+uint8_t bmp180_state = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -137,17 +143,29 @@ void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *hspi){
 
 void HAL_I2C_MasterRxCpltCallback(I2C_HandleTypeDef *hi2c){
     if (hi2c->Instance == I2C3){
-    	if(mode == 0){
-    		UT = (rawData[0]) << 8 | rawData[1];
-    		temp_ready = 1;
-    	}
-    	else if(mode == 1){
-    		UP = (rawData[0]) << 8 | rawData[1];
-    		pres_ready = 1;
-    	}
-		mode = (mode == 0) ? 1 : 0;
+    	BMP180_I2C_RxCpltCallback(&hbmp180);
     }
 }
+
+void HAL_I2C_MasterTxCpltCallback(I2C_HandleTypeDef *hi2c){
+	if (hi2c->Instance == I2C3){
+		BMP180_I2C_TxCpltCallback(&hbmp180);
+	}
+}
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
+    if (htim->Instance == TIM3){
+    	HAL_TIM_Base_Stop_IT(&htim3);
+    	if(hbmp180.state == 2)
+    		hbmp180.state = 0x23;
+    	else if (hbmp180.state == 6)
+    		hbmp180.state = 0x27;
+    }
+    if (htim->Instance == TIM4){
+		HAL_TIM_Base_Stop_IT(&htim4);
+    	hbmp180.state = 0x21;
+       }
+}
+
 /* USER CODE END 0 */
 
 /**
@@ -186,7 +204,7 @@ int main(void)
   MX_TIM4_Init();
   MX_SPI2_Init();
   /* USER CODE BEGIN 2 */
-  BMP180_init();
+  BMP180_init(&hbmp180);
   HAL_StatusTypeDef status = W5500_Init(&hw5500, &w5500_net_config);
   memcpy(&hsoc1.it, &sock1_it, sizeof(W5500_Sock_Interrupt_Status_t)); // socket type init
   status = W5500_Socket_Open(&hw5500, &hsoc1);
@@ -213,7 +231,6 @@ int main(void)
 
   HAL_TIM_Base_Start_IT(&htim4);
   W5500_SIR_Enable(&hw5500, &hsoc1);
-  //W5500_Socket_IR_Disable(&hw5500, &hsoc1, 0xFF);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -225,21 +242,49 @@ int main(void)
 		  dma_it = 0;
 	  }
 
-	  if(temp_ready == 1){
-		  sensor_data.temperature = calcTemp(UT);
-		  temp_ready = 0;
-		  readRawData(1);
-	  }
-	  else if(pres_ready == 1){
-		  sensor_data.pressure = calcPres(UP);
-		  printTP2sh(sensor_data.temperature, sensor_data.pressure);
-		  pres_ready = 0;
-		  HAL_TIM_Base_Start_IT(&htim4);
+	  if(hbmp180.state & 0x20){
+		  hbmp180.state &= ~0x20;
+		  switch(hbmp180.state){
+		  case 1:
+			  BMP180_readRawData(&hbmp180);
+			  break;
+		  case 2:
+			  BMP180_waitData(&hbmp180);
+			  break;
+		  case 3:
+			BMP180_dataReadyToGet(&hbmp180);
+			break;
+		  case 4:
+			hbmp180.temp_ready = 2;
+			BMP180_getData(&hbmp180);
+			break;
+		  case 5:
+			  BMP180_readRawData(&hbmp180);
+			  break;
+		  case 6:
+			  BMP180_waitData(&hbmp180);
+			  break;
+		  case 7:
+			  BMP180_dataReadyToGet(&hbmp180);
+			  break;
+		  case 8:
+			  hbmp180.pres_ready = 2;
+			BMP180_getData(&hbmp180);
+			break;
+		  }
 	  }
 
-	  if(read == 1){
-		  readRawData(0);
-		  read = 0;
+	  if(hbmp180.temp_ready == 1){
+		  sensor_data.temperature = BMP180_calcTemp(&hbmp180)/10.0;
+		  BMP180_readRawData(&hbmp180);
+		  hbmp180.temp_ready = 0;
+	  }
+	  else if(hbmp180.pres_ready == 1){
+		  sensor_data.pressure = BMP180_calcPres(&hbmp180);
+		  hbmp180.pres_ready = 0;
+		  printTP2sh(sensor_data.temperature, sensor_data.pressure);
+		  HAL_TIM_Base_Start_IT(&htim4);
+		  hbmp180.state = 0x00;
 	  }
 
 	  if(W5500_it == 1){

@@ -9,12 +9,12 @@
 #include "uartCom.h"
 
 HAL_StatusTypeDef status;
-volatile uint8_t tx_finished = 0;
+uint8_t tx_finished = 0;
 
-void printTP2sh(int32_t T, int32_t P){
+void printTP2sh(double T, int32_t P){
 	char buffer[56];
 
-	snprintf(buffer, sizeof(buffer), "\t\ttemp: %.2f °C\npres: %ld Pa\r\n", T/10.0, P);
+	snprintf(buffer, sizeof(buffer), "\t\ttemp: %.2f °C\npres: %ld Pa\r\n", T, P);
 
 	while(tx_finished == 1);
 	tx_finished = 1;

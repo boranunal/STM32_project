@@ -12,7 +12,7 @@
 #include "stm32f4xx_hal.h"
 #include "main.h"
 
-void printTP2sh(int32_t T, int32_t P);
+void printTP2sh(double  T, int32_t P);
 void print2sh(char * buffer);
 void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart);
 
