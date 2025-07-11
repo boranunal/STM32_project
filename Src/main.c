@@ -77,21 +77,24 @@ W5500_Sock_Interrupt_Status_t sock1_it = {
 		.con = 0,
 		.state = 0
 };
-
+char req[256], res[512];
 W5500_Sock_Handle_t hsoc1 = {
+		.req = req,
 		.Sn = 1,
 		.protocol = STANDART_TCP,
 		.port = 80,
-		.rxbuffer = 4,
-		.txbuffer = 4,
+		.rxbuf_size = 4,
+		.txbuf_size = 4,
 		.tos = 0
 };
 
 
 uint8_t mode = 0;
-int32_t CD;
+int32_t UT, UP;
+SensorData_t sensor_data;
 uint8_t W5500_it = 0;
 uint8_t read = 0;
+uint8_t temp_ready, pres_ready = 0;
 uint8_t dma_it = 0;
 
 /* USER CODE END PV */
@@ -111,6 +114,11 @@ static void MX_SPI2_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+
+/*
+ *
+ * callback functions
+ */
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
     if(GPIO_Pin == B1_Pin){
     	print2sh("DONT PUSH THE BUTTON!!\r");
@@ -126,6 +134,20 @@ void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *hspi){
 		dma_it = 1;
 	}
 }
+
+void HAL_I2C_MasterRxCpltCallback(I2C_HandleTypeDef *hi2c){
+    if (hi2c->Instance == I2C3){
+    	if(mode == 0){
+    		UT = (rawData[0]) << 8 | rawData[1];
+    		temp_ready = 1;
+    	}
+    	else if(mode == 1){
+    		UP = (rawData[0]) << 8 | rawData[1];
+    		pres_ready = 1;
+    	}
+		mode = (mode == 0) ? 1 : 0;
+    }
+}
 /* USER CODE END 0 */
 
 /**
@@ -136,7 +158,8 @@ int main(void)
 {
 
   /* USER CODE BEGIN 1 */
-HAL_StatusTypeDef hal_status;
+	HAL_StatusTypeDef hal_status;
+	uint16_t len = 0;
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -195,52 +218,34 @@ HAL_StatusTypeDef hal_status;
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  uint8_t sock_st, sock_it;
   while (1)
   {
 	  if(dma_it == 1){
 		  W5500_SPI_TxRxCpltCallback(&hw5500, &hsoc1);
 		  dma_it = 0;
 	  }
-	  if(read == 1){
-		  if(mode == 0 || mode == 1){
-			  readRawData(mode);
-			  read = 0;
-			  mode = (mode == 0) ? 1 : 0;
-		  }
-		  else mode = 0;
+
+	  if(temp_ready == 1){
+		  sensor_data.temperature = calcTemp(UT);
+		  temp_ready = 0;
+		  readRawData(1);
 	  }
-	  if(rawDataReady == 1){
-		  CD = (mode == 0) ? calcPres(UD) : calcTemp(UD);
-		  printTP2sh(CD, (mode == 0) ? 1 : 0);
-		  rawDataReady = 0;
+	  else if(pres_ready == 1){
+		  sensor_data.pressure = calcPres(UP);
+		  printTP2sh(sensor_data.temperature, sensor_data.pressure);
+		  pres_ready = 0;
 		  HAL_TIM_Base_Start_IT(&htim4);
 	  }
-	  if(W5500_it == 1){
 
-		  sock_it = W5500_Socket_IR_Get(&hw5500, &hsoc1);
+	  if(read == 1){
+		  readRawData(0);
+		  read = 0;
+	  }
+
+	  if(W5500_it == 1){
 		  hal_status = W5500_Socket_IntStatus_Update(&hw5500, &hsoc1);
 		  if(hal_status != HAL_OK) break;
 		  W5500_it = 0;
-		  //print2sh("interrupt: ");
-		  //snprintf(msg1, 48, "0x%02X\r\n", sock_it);
-		  //print2sh(msg1);
-
-		  switch(hsoc1.it.state){
-		  case SOCK_LISTEN_Status:
-			  break;
-		  case SOCK_ESTABLISHED_Status:
-			  break;
-		  case SOCK_CLOSE_WAIT_Status:
-			  break;;
-		  case SOCK_CLOSED_Status:
-			  break;
-		  default:
-//			  strcpy(msg2, "OTHER\r\n");
-//			  print2sh(msg2);
-			  break;
-		  }
-
 		  W5500_Socket_SM(&hw5500, &hsoc1);
 	  }
 	  /*
@@ -248,7 +253,13 @@ HAL_StatusTypeDef hal_status;
 	   * Respond to client here.
 	   */
 	  if(hsoc1.it.recv & 0x04){
+		  if(W5500_Socket_GetStatus(&hw5500, &hsoc1) != SOCK_ESTABLISHED_Status) break;
+		  len = getResHttp(hsoc1.req, res, &sensor_data);
+		  status = W5500_Socket_StartTX_DMA(&hw5500, &hsoc1, res, len);
 
+		  if(status != HAL_OK) break;
+		  hsoc1.it.recv &= ~(uint8_t)0x04;
+		  hsoc1.it.send_ok |= 0x02;
 	  }
 
     /* USER CODE END WHILE */
@@ -544,23 +555,16 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOA, W5500_CS_Pin|W5500_RESET_Pin, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOA, W5500_RESET_Pin|W5500_CS_Pin, GPIO_PIN_SET);
 
   /*Configure GPIO pins : B1_Pin W5500_Int_Pin */
   GPIO_InitStruct.Pin = B1_Pin|W5500_Int_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
-
-  /*Configure GPIO pin : W5500_CS_Pin */
-  GPIO_InitStruct.Pin = W5500_CS_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
-  HAL_GPIO_Init(W5500_CS_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pin : LD2_Pin */
   GPIO_InitStruct.Pin = LD2_Pin;
@@ -575,6 +579,13 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_MEDIUM;
   HAL_GPIO_Init(W5500_RESET_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : W5500_CS_Pin */
+  GPIO_InitStruct.Pin = W5500_CS_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+  HAL_GPIO_Init(W5500_CS_GPIO_Port, &GPIO_InitStruct);
 
   /* EXTI interrupt init*/
   HAL_NVIC_SetPriority(EXTI9_5_IRQn, 0, 0);

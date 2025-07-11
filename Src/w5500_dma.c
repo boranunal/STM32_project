@@ -27,9 +27,9 @@ static uint8_t spi_rx_buffer[BUFFER_SIZE];
 HAL_StatusTypeDef W5500_Reset(W5500_Handle_t *hw5500)
 {
     HAL_GPIO_WritePin(hw5500->config.reset_port, hw5500->config.reset_pin, GPIO_PIN_RESET);
-    HAL_Delay(5);
+    HAL_Delay(100);
     HAL_GPIO_WritePin(hw5500->config.reset_port, hw5500->config.reset_pin, GPIO_PIN_SET);
-    HAL_Delay(5);
+    HAL_Delay(50);
     return HAL_OK;
 }
 
@@ -55,7 +55,7 @@ HAL_StatusTypeDef W5500_Init(W5500_Handle_t *hw5500, W5500_Config_t *config)
     if (status != HAL_OK) return status;
 
     // Wait for reset to complete, could be smaller value
-    HAL_Delay(50);
+    HAL_Delay(100);
 
     // Software Reset
     uint8_t rst_cmd = 0x80;
@@ -85,10 +85,33 @@ HAL_StatusTypeDef W5500_Init(W5500_Handle_t *hw5500, W5500_Config_t *config)
     status = W5500_WriteReg_Blocking(hw5500, SIPR, BSB_GEN(0,0), hw5500->config.ip, 4);
     if (status != HAL_OK) return status;
 
+    // default value for rtr 200 msec
+    uint8_t rtr[2] = {0x07,0xD0};
+    status = W5500_WriteReg_Blocking(hw5500, RTR, BSB_GEN(0,0), rtr, 2);
+    if (status != HAL_OK) return status;
+
+    // defaut retry count on timeout
+    uint8_t rcr = 0x03;
+    status = W5500_WriteReg_Blocking(hw5500, RCR, BSB_GEN(0,0), &rcr, 1);
+    if (status != HAL_OK) return status;
+
+    // set INTLEVEL register to some value
     uint8_t def_INTLEVEL[2] = {0x00, 0x20};
     status = W5500_WriteReg_Blocking(hw5500, INTLEVEL, BSB_GEN(0,0), def_INTLEVEL, 2);
     if (status != HAL_OK) return status;
 
+    // Wait for link is up
+    uint8_t phylink;
+    uint8_t count = 10;
+
+    WAIT_PHYLINK:
+		status = W5500_ReadReg_Blocking(hw5500, PHYCFGR, BSB_GEN(0,0), &phylink, 1);
+		if (status != HAL_OK) return status;
+		if (phylink != 1){
+			if(count-- == 0) return HAL_ERROR;
+			HAL_Delay(100);
+			goto WAIT_PHYLINK;
+		}
     print2sh("W5500: INIT DONE!\r\n");
     return HAL_OK;
 }
@@ -99,7 +122,7 @@ HAL_StatusTypeDef W5500_WriteReg_DMA(W5500_Handle_t *hw5500, uint32_t addr, uint
 
 	hw5500->tx_buffer[0] = (addr >> 8) & 0xFF;
 	hw5500->tx_buffer[1] = addr & 0xFF;
-	hw5500->tx_buffer[2] = (bsb << 3 | 0x4) & 0xFF;
+	hw5500->tx_buffer[2] = (bsb << 3 | 0x04) & 0xFF;
 
 	memcpy(&hw5500->tx_buffer[3], data, len);
 
@@ -214,11 +237,11 @@ HAL_StatusTypeDef W5500_Socket_Open(W5500_Handle_t *hw5500, W5500_Sock_Handle_t 
 	if (status != HAL_OK) return status;
 
 	// Set RX buffer of socket
-	status = W5500_WriteReg_Blocking(hw5500, Sn_RXBUF_SIZE, BSB_GEN(hsoc->Sn, 1), &hsoc->rxbuffer, 1);
+	status = W5500_WriteReg_Blocking(hw5500, Sn_RXBUF_SIZE, BSB_GEN(hsoc->Sn, 1), &hsoc->rxbuf_size, 1);
 	if (status != HAL_OK) return status;
 
 	// Set TX buffer of socket
-	status = W5500_WriteReg_Blocking(hw5500, Sn_TXBUF_SIZE, BSB_GEN(hsoc->Sn, 1), &hsoc->txbuffer, 1);
+	status = W5500_WriteReg_Blocking(hw5500, Sn_TXBUF_SIZE, BSB_GEN(hsoc->Sn, 1), &hsoc->txbuf_size, 1);
 	if (status != HAL_OK) return status;
 
 	// Set TOS
@@ -343,6 +366,15 @@ uint16_t W5500_Socket_GetTXWR(W5500_Handle_t *hw5500, W5500_Sock_Handle_t *hsoc)
     uint8_t txwr[2];
     W5500_ReadReg_Blocking(hw5500, Sn_TX_WR, BSB_GEN(hsoc->Sn, 1), txwr, 2);
     return (txwr[0] << 8) | txwr[1];
+}
+/*
+ * Return TX buffer read pointer.
+ */
+uint16_t W5500_Socket_GetTXRD(W5500_Handle_t *hw5500, W5500_Sock_Handle_t *hsoc){
+	if (hsoc->Sn >= 8) return 0xFF;
+    uint8_t txrd[2];
+    W5500_ReadReg_Blocking(hw5500, Sn_TX_RD, BSB_GEN(hsoc->Sn, 1), txrd, 2);
+    return (txrd[0] << 8) | txrd[1];
 }
 /*
  * Set TX buffer write pointer.
@@ -498,20 +530,19 @@ HAL_StatusTypeDef W5500_Socket_StartRX_DMA(W5500_Handle_t *hw5500, W5500_Sock_Ha
 	return status;
 }
 HAL_StatusTypeDef W5500_Socket_FinishRX_DMA(W5500_Handle_t *hw5500, W5500_Sock_Handle_t *hsoc){
-	W5500_Read_Rx(hw5500);	//	process data
+	strncpy(hsoc->req, hw5500->rx_buffer+3, 256);
 	HAL_StatusTypeDef status = W5500_Socket_SetRXRD(hw5500, hsoc);
 	if(status != HAL_OK) return status;
 	status = W5500_Socket_CMD(hw5500, hsoc, SOCK_RECV);
 	if(status != HAL_OK) return status;
 	return HAL_OK;
 }
-HAL_StatusTypeDef W5500_Socket_StartTX_DMA(W5500_Handle_t *hw5500, W5500_Sock_Handle_t *hsoc, uint16_t len){
-	uint16_t txwr;
+HAL_StatusTypeDef W5500_Socket_StartTX_DMA(W5500_Handle_t *hw5500, W5500_Sock_Handle_t *hsoc, uint8_t *data, uint16_t len){
+	uint16_t txrd = W5500_Socket_GetTXRD(hw5500, hsoc);
 	uint16_t free_size = W5500_Socket_GetTxFreeSize(hw5500, hsoc);
 	if(free_size < len) return HAL_ERROR;
-	txwr = W5500_Socket_GetTXWR(hw5500, hsoc);
-	hsoc->txwr_next = txwr + len;
-	HAL_StatusTypeDef status = W5500_WriteReg_DMA(hw5500, txwr, BSB_GEN(hsoc->Sn,2), hw5500->tx_buffer, len);
+	hsoc->txwr_next = txrd + len;
+	HAL_StatusTypeDef status = W5500_WriteReg_DMA(hw5500, txrd, BSB_GEN(hsoc->Sn,2), data, len);
 	return status;
 }
 
@@ -520,6 +551,7 @@ HAL_StatusTypeDef W5500_Socket_FinishTX_DMA(W5500_Handle_t *hw5500, W5500_Sock_H
 	if(status != HAL_OK) return status;
 	status = W5500_Socket_CMD(hw5500, hsoc, SOCK_SEND);
 	if(status != HAL_OK) return status;
+	hsoc->it.send_ok |= 0x02;
 	return HAL_OK;
 }
 /*
@@ -531,6 +563,7 @@ HAL_StatusTypeDef W5500_Socket_FinishTX_DMA(W5500_Handle_t *hw5500, W5500_Sock_H
 void W5500_Socket_SM(W5500_Handle_t *hw5500, W5500_Sock_Handle_t *hsoc){
 	uint8_t flag = 0;
 //	char msg2[48];
+
 	do{
 		switch(hsoc->it.state){
 		case SOCK_INIT_Status:		// listen
@@ -547,22 +580,28 @@ void W5500_Socket_SM(W5500_Handle_t *hw5500, W5500_Sock_Handle_t *hsoc){
 				hsoc->it.recv |= 0x02;
 				hsoc->it.recv &= ~(uint8_t)0x01;
 			}
+
 			flag = 0;
 			break;
 		case SOCK_CLOSE_WAIT_Status:	// close the socket
 //			strcpy(msg2, "SOCK_CLOSE_WAIT\r\n");
-			W5500_Socket_CMD(hw5500, hsoc, SOCK_CLOSE);
-			W5500_Socket_CMD(hw5500, hsoc, SOCK_OPEN);
-			W5500_Socket_CMD(hw5500, hsoc, SOCK_LISTEN);
-			flag = 0;
+			if(hsoc->it.discon){
+				W5500_Socket_CMD(hw5500, hsoc, SOCK_DISCON);
+				hsoc->it.discon = 0;
+			}
+			else
+				W5500_Socket_CMD(hw5500, hsoc, SOCK_CLOSE);
+			hsoc->it.state = 0xFF;
+			flag = 1;
 			break;
 		case SOCK_CLOSED_Status:		// open the socket
 //			strcpy(msg2, "SOCK_CLOSED\r\n");
 			W5500_Socket_CMD(hw5500, hsoc, SOCK_OPEN);
-			W5500_Socket_CMD(hw5500, hsoc, SOCK_LISTEN);
-			flag = 0;
+			hsoc->it.state = 0xFF;
+			flag = 1;
 			break;
 		default:
+			HAL_Delay(10);
 			hsoc->it.state = W5500_Socket_GetStatus(hw5500, hsoc);
 			flag = 1;
 			break;
@@ -570,9 +609,7 @@ void W5500_Socket_SM(W5500_Handle_t *hw5500, W5500_Sock_Handle_t *hsoc){
 	}while(flag == 1);
 //	print2sh(msg2);
 }
-void W5500_Read_Rx(W5500_Handle_t *hw5500){
-	print2sh((char *)hw5500->rx_buffer);
-}
+
 /*
  * SPI TxRx interrupt callback
  */
@@ -592,8 +629,9 @@ void W5500_SPI_TxRxCpltCallback(W5500_Handle_t *hw5500, W5500_Sock_Handle_t *hso
 		hsoc->it.recv |= 0x04;
 	}
 	// IF SPI transmit is done enter here.
-	if(hsoc->it.send_ok){
-
+	if(hsoc->it.send_ok & 0x02){
+		if(W5500_Socket_FinishTX_DMA(hw5500, hsoc) != HAL_OK) return;
+		hsoc->it.send_ok &= ~(uint8_t)0x02;
 	}
 
 }

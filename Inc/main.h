@@ -34,6 +34,7 @@ extern "C" {
 #include "BMP180.h"
 #include "uartCom.h"
 #include "w5500_dma.h"
+#include "httpserver.h"
 #include <stdlib.h>
 #include <stdio.h>
 /* USER CODE END Includes */
@@ -64,7 +65,7 @@ extern uint8_t read;
 void Error_Handler(void);
 
 /* USER CODE BEGIN EFP */
-
+#define BSB_GEN(sn, sr)	(((sn<<2)|(sr)) & 0x1F)
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
@@ -75,12 +76,12 @@ void Error_Handler(void);
 #define USART_TX_GPIO_Port GPIOA
 #define USART_RX_Pin GPIO_PIN_3
 #define USART_RX_GPIO_Port GPIOA
-#define W5500_CS_Pin GPIO_PIN_4
-#define W5500_CS_GPIO_Port GPIOA
 #define LD2_Pin GPIO_PIN_5
 #define LD2_GPIO_Port GPIOA
 #define W5500_RESET_Pin GPIO_PIN_6
 #define W5500_RESET_GPIO_Port GPIOA
+#define W5500_CS_Pin GPIO_PIN_7
+#define W5500_CS_GPIO_Port GPIOA
 #define W5500_Int_Pin GPIO_PIN_8
 #define W5500_Int_GPIO_Port GPIOC
 #define W5500_Int_EXTI_IRQn EXTI9_5_IRQn

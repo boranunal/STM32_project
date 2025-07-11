@@ -11,12 +11,10 @@
 HAL_StatusTypeDef status;
 volatile uint8_t tx_finished = 0;
 
-void printTP2sh(int32_t x, uint8_t mode){
-	char buffer[32];
-	if (mode == 0)
-		snprintf(buffer, sizeof(buffer), "temp: %.2f °C\t\t\t", x/10.0);
-	else
-		snprintf(buffer, sizeof(buffer), "pres: %ld Pa\t\t\r", x);
+void printTP2sh(int32_t T, int32_t P){
+	char buffer[56];
+
+	snprintf(buffer, sizeof(buffer), "\t\ttemp: %.2f °C\npres: %ld Pa\r\n", T/10.0, P);
 
 	while(tx_finished == 1);
 	tx_finished = 1;
@@ -24,10 +22,12 @@ void printTP2sh(int32_t x, uint8_t mode){
 }
 
 void print2sh(char * str){
-
+	int len = strlen(str);
+	len = (len > 512) ? 512 : len;
+	str[len] = '\0';
 	while(tx_finished == 1);
 	tx_finished = 1;
-	HAL_UART_Transmit_DMA(&huart2, (uint8_t*)str, strlen(str));
+	HAL_UART_Transmit_DMA(&huart2, (uint8_t*)str, len);
 
 }
 

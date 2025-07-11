@@ -1,9 +1,8 @@
 #include <BMP180.h>
 
 BMP180_EEPROM _bmp180_calib;
-uint8_t rawData[2];
-volatile uint8_t rawDataReady = 0;
-volatile int32_t UD;
+volatile uint8_t rawData[2];
+int32_t UD;
 uint8_t oss = 0;
 volatile uint8_t wait = 0;
 volatile uint8_t rcv = 0;
@@ -100,9 +99,3 @@ void HAL_I2C_MasterTxCpltCallback(I2C_HandleTypeDef *hi2c){
     }
 }
 
-void HAL_I2C_MasterRxCpltCallback(I2C_HandleTypeDef *hi2c){
-    if (hi2c->Instance == I2C3){
-    	UD = (rawData[0]) << 8 | rawData[1];
-    	rawDataReady = 1;
-    }
-}
