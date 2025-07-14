@@ -2,7 +2,7 @@
  * w5500_dma.h
  *
  *  Created on: Jul 7, 2025
- *      Author: root
+ *      Author: boran
  */
 
 #ifndef INC_W5500_DMA_H_
@@ -12,6 +12,7 @@
 #include <stdint.h>
 #include "uartCom.h"
 #include <string.h>
+#include <stdio.h>
 
 #define SPI_TIMEOUT 1000
 #define BUFFER_SIZE 2048
@@ -149,6 +150,7 @@ typedef struct{
 	uint8_t discon;
 	uint8_t con;
 	uint8_t state;
+	int8_t it_count;
 }W5500_Sock_Interrupt_Status_t;
 
 typedef struct{
@@ -209,6 +211,6 @@ void W5500_Socket_SM(W5500_Handle_t *hw5500, W5500_Sock_Handle_t *hsoc);
 
 // Interrupt Callbacks
 void W5500_SPI_TxRxCpltCallback(W5500_Handle_t *hw5500, W5500_Sock_Handle_t *hsoc);
-
+void W5500_SPI_ErrorCallback(W5500_Handle_t *hw5500);
 
 #endif /* INC_W5500_DMA_H_ */

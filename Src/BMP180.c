@@ -14,7 +14,7 @@ void BMP180_init(BMP180_Handle_t *hbmp180){
 	uint8_t calib_buff[22];
 	uint8_t i2cRxBuffer[1] = {0};
 	uint8_t rst_sq[] = {0xE0, 0xB6};
-	HAL_StatusTypeDef status = HAL_I2C_Master_Transmit(hbmp180->hi2c, BMP180WrAddr, rst_sq, 2, 200);
+	HAL_I2C_Master_Transmit(hbmp180->hi2c, BMP180WrAddr, rst_sq, 2, 200);
 	HAL_Delay(100);
 	HAL_I2C_Mem_Read(hbmp180->hi2c, BMP180ReadAddr, 0xD0, 1, i2cRxBuffer, 1, 100);
 	if(i2cRxBuffer[0] == 0x55){
@@ -44,7 +44,9 @@ void BMP180_init(BMP180_Handle_t *hbmp180){
 	memcpy(&hbmp180->calib, &_bmp180_calib, sizeof(BMP180_EEPROM));
 }
 /*
- * Request data to read. mode: 0 for temperature, mode: 1 for pressure.
+ * Request data to read.
+ * Write the control register,
+ * according to the value BMP180 will read temperature or pressure.
  */
 void BMP180_readRawData(BMP180_Handle_t *hbmp180){
 	uint8_t tx[2];
@@ -56,9 +58,10 @@ void BMP180_readRawData(BMP180_Handle_t *hbmp180){
 }
 /*
  * Start timer and wait 5 msec for data to be ready.
+ * After writing the control register it takes some time for data to be ready.
  */
 void BMP180_waitData(BMP180_Handle_t *hbmp180){
-	__HAL_TIM_SET_COUNTER(hbmp180->htim, 7000);
+	__HAL_TIM_SET_COUNTER(hbmp180->htim, 5000);
 	HAL_TIM_Base_Start_IT(hbmp180->htim);
 }
 /*
@@ -72,6 +75,7 @@ void BMP180_dataReadyToGet(BMP180_Handle_t *hbmp180){
 }
 /*
  * Start receiving data.
+ * Handle the uncompensated data in I2C_RxCpltCallback function.
  */
 void BMP180_getData(BMP180_Handle_t *hbmp180){
 	HAL_I2C_Master_Receive_IT(hbmp180->hi2c, BMP180ReadAddr, hbmp180->raw_data, 2);
@@ -82,6 +86,8 @@ void BMP180_getData(BMP180_Handle_t *hbmp180){
 int32_t BMP180_calcTemp(BMP180_Handle_t *hbmp180){
 	int32_t x1 = (hbmp180->ut - hbmp180->calib.AC6) * hbmp180->calib.AC5 / (1 << 15);
 	int32_t x2 = (hbmp180->calib.MC * (1 << 11)) / (x1 + hbmp180->calib.MD);
+	// b5 value is used to calculate pressure,
+	// to calculate pressure first calculate temperature.
 	hbmp180->b5 = x1 + x2;
 	return (hbmp180->b5+8)/(1<<4);
 }
@@ -109,6 +115,9 @@ int32_t BMP180_calcPres(BMP180_Handle_t *hbmp180){
 	return p;
 }
 
+/*
+ *  Function to be called when I2C transmission is completed.
+ */
 void BMP180_I2C_TxCpltCallback(BMP180_Handle_t *hbmp180){
 	if(hbmp180->state == 1){
 		hbmp180->state = 0x22;
@@ -124,7 +133,9 @@ void BMP180_I2C_TxCpltCallback(BMP180_Handle_t *hbmp180){
 	}
 
 }
-
+/*
+ * Function to be called when I2C receive completed.
+ */
 void BMP180_I2C_RxCpltCallback(BMP180_Handle_t *hbmp180){
 	if(hbmp180->temp_ready == 2){
 		hbmp180->ut = (((hbmp180->raw_data[0]) << 8) & 0xFF00) | (hbmp180->raw_data[1] & 0xFF);

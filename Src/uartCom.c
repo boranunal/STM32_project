@@ -4,8 +4,7 @@
  *  Created on: Jul 2, 2025
  *      Author: boran
  */
-#include <stdio.h>
-#include <string.h>
+
 #include "uartCom.h"
 
 HAL_StatusTypeDef status;

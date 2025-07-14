@@ -76,7 +76,7 @@ W5500_Config_t w5500_net_config = {
 		.cs_pin = W5500_CS_Pin,
 		.reset_port = W5500_RESET_GPIO_Port,
 		.reset_pin = W5500_RESET_Pin,
-		.mac = {0x02, 0x00, 0x00, 0x00, 0x00, 0x01},
+		.mac = {0x02, 0x00, 0x00, 0x00, 0x00, 0x07},
 		.ip = {192, 168, 1, 101},
 		.subnet = {255, 255, 255, 0},
 		.gateway = {0, 0, 0, 0}
@@ -92,7 +92,7 @@ W5500_Sock_Interrupt_Status_t sock1_it = {
 		.con = 0,
 		.state = 0
 };
-char req[256], res[512];
+char req[256], res[2048];
 W5500_Sock_Handle_t hsoc1 = {
 		.req = req,
 		.Sn = 1,
@@ -131,8 +131,15 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
     }
     if(GPIO_Pin == W5500_Int_Pin){
     	// w5500 interrupt control
-    	W5500_it = 1;
+    	hsoc1.it.it_count++;
     }
+}
+
+void HAL_SPI_ErrorCallback(SPI_HandleTypeDef *hspi){
+	if(hspi->Instance == SPI2){
+		W5500_SPI_ErrorCallback(&hw5500);
+	}
+
 }
 
 void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *hspi){
@@ -242,38 +249,89 @@ int main(void)
 		  dma_it = 0;
 	  }
 
+	  // If W5500 asserted interrupt run the state machine
+	  if(hsoc1.it.it_count > 0){
+		  hsoc1.it.it_count--;
+		  W5500_Socket_IntStatus_Update(&hw5500, &hsoc1);
+		  W5500_Socket_SM(&hw5500, &hsoc1);
+		  if(hsoc1.it.con){
+			  hsoc1.it.con = 0;
+		  }
+
+		  if(hsoc1.it.recv){
+			  hsoc1.it.state = 0x23;
+			  hsoc1.it.recv = 0;
+		  }
+	  }
+	  if(hsoc1.it.state & 0x20){
+		  hsoc1.it.state &= ~0x20;
+		  switch(hsoc1.it.state){
+		  case 3:	// start spi rx
+			  W5500_Socket_StartRX_DMA(&hw5500, &hsoc1);
+			  break;
+		  case 4:	//finish rx, start tx
+			  W5500_Socket_FinishRX_DMA(&hw5500, &hsoc1);
+
+			  if(W5500_Socket_GetStatus(&hw5500, &hsoc1) != SOCK_ESTABLISHED_Status) break;
+			  len = getResHttp(hsoc1.req, res, &sensor_data);
+
+			  W5500_Socket_StartTX_DMA(&hw5500, &hsoc1, res, len);
+			  break;
+		  case 5: // finish tx
+			  W5500_Socket_FinishTX_DMA(&hw5500, &hsoc1);
+			  break;
+		  case 6: // reset
+			  W5500_Socket_Close(&hw5500, &hsoc1);
+			  W5500_Init(&hw5500, &w5500_net_config);
+			  W5500_Socket_Open(&hw5500, &hsoc1);
+			  hsoc1.it.it_count = 1;
+			  break;
+		  default:
+			  hsoc1.it.state = 0x26;
+			  break;
+		  }
+	  }
+
 	  if(hbmp180.state & 0x20){
 		  hbmp180.state &= ~0x20;
 		  switch(hbmp180.state){
+		  // Start reading temperature, by writing ctrl register
 		  case 1:
 			  BMP180_readRawData(&hbmp180);
 			  break;
+		  // Start timer and wait
 		  case 2:
 			  BMP180_waitData(&hbmp180);
 			  break;
+		  // Transmit the read address
 		  case 3:
 			BMP180_dataReadyToGet(&hbmp180);
 			break;
+		  // Start receiving data
 		  case 4:
 			hbmp180.temp_ready = 2;
 			BMP180_getData(&hbmp180);
 			break;
+		  // Start reading pressure, by writing the ctrl register
 		  case 5:
 			  BMP180_readRawData(&hbmp180);
 			  break;
+		  // Start timer and wait
 		  case 6:
 			  BMP180_waitData(&hbmp180);
 			  break;
+		  // Transmit read address
 		  case 7:
 			  BMP180_dataReadyToGet(&hbmp180);
 			  break;
+		  // Start receiving data
 		  case 8:
 			  hbmp180.pres_ready = 2;
 			BMP180_getData(&hbmp180);
 			break;
 		  }
 	  }
-
+	  // If sensor data is ready calculate the real value
 	  if(hbmp180.temp_ready == 1){
 		  sensor_data.temperature = BMP180_calcTemp(&hbmp180)/10.0;
 		  BMP180_readRawData(&hbmp180);
@@ -281,30 +339,11 @@ int main(void)
 	  }
 	  else if(hbmp180.pres_ready == 1){
 		  sensor_data.pressure = BMP180_calcPres(&hbmp180);
+		  sensor_data.timestamp = HAL_GetTick() / 1000;
 		  hbmp180.pres_ready = 0;
 		  printTP2sh(sensor_data.temperature, sensor_data.pressure);
 		  HAL_TIM_Base_Start_IT(&htim4);
 		  hbmp180.state = 0x00;
-	  }
-
-	  if(W5500_it == 1){
-		  hal_status = W5500_Socket_IntStatus_Update(&hw5500, &hsoc1);
-		  if(hal_status != HAL_OK) break;
-		  W5500_it = 0;
-		  W5500_Socket_SM(&hw5500, &hsoc1);
-	  }
-	  /*
-	   * If data is received and processed, this code is run.
-	   * Respond to client here.
-	   */
-	  if(hsoc1.it.recv & 0x04){
-		  if(W5500_Socket_GetStatus(&hw5500, &hsoc1) != SOCK_ESTABLISHED_Status) break;
-		  len = getResHttp(hsoc1.req, res, &sensor_data);
-		  status = W5500_Socket_StartTX_DMA(&hw5500, &hsoc1, res, len);
-
-		  if(status != HAL_OK) break;
-		  hsoc1.it.recv &= ~(uint8_t)0x04;
-		  hsoc1.it.send_ok |= 0x02;
 	  }
 
     /* USER CODE END WHILE */
