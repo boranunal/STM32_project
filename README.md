@@ -17,7 +17,7 @@ Developed using HAL libraries and CubeIDE.
 - `uartCom.c/h`: Print to terminal using UART for debugging. (*Optional; not required for core functionality)
 
 ## Important Handle types
-
+```c
 // BMP180 Handle type
 typedef struct{
 	BMP180_EEPROM calib;
@@ -30,9 +30,9 @@ typedef struct{
 	uint8_t temp_ready;
 	uint8_t pres_ready;
 } BMP180\_Handle\_t;
-
+```
 Call bmp180.c functions using BMP180\_Handle\_t. Initialize the htim, hi2c, the array raw\_data, and its ready.
-
+```c
 // W5500 Configuration Structure					// example
 typedef struct {							W5500_Config_t w5500_net_config = {
     SPI_HandleTypeDef *hspi;									.hspi = &hspi2,
@@ -45,9 +45,9 @@ typedef struct {							W5500_Config_t w5500_net_config = {
     uint8_t subnet[4];										.subnet = {255, 255, 255, 0},
     uint8_t gateway[4];										.gateway = {0, 0, 0, 0}
 } W5500_Config_t;										};
-
+```
 Ensure the IP and MAC addresses do not conflict with other devices on your network. After setup, call W5500_Init()
-
+```c
 typedef struct{
 	char *req;
 	W5500_Sock_Interrupt_Status_t it;
@@ -60,11 +60,11 @@ typedef struct{
 	uint8_t txbuf_size; 	// in kb
 	uint8_t tos;		// type of service 0 for standart operation, reference: http://www.iana.org/assignments/ip-parameters/ip-parameters.xhtml
 } W5500_Sock_Handle_t;
-
+```
 Make sure to initialize before calling W5500_Socket_Open() function. W5500_Sock_Interrupt_Status_t is used to keep track of the socket interrupts and the state machine.
 
 ## BMP180 State Machine
-
+```mermaid
 stateDiagram-v2
     [*] --> S0_INIT : BMP180_init()
     S0_INIT --> S1_Transmit_0x2E_to_read_temperature : Trigger Sensor Read
@@ -78,9 +78,9 @@ stateDiagram-v2
     S7_Transmit_read_address --> S8_Start_receiving : I2C Tx Interrupt
     S8_Start_receiving --> S0_INIT
     S8_Start_receiving --> Calculate_Pressure : I2C Rx Interrupt
-
+```
 ## W5500 State Machine
-
+```mermaid
 stateDiagram-v2
     [*] --> S0_INIT : Socket_Open()
     S0_INIT --> S1_Listen : 
@@ -89,7 +89,7 @@ stateDiagram-v2
     S3_Start_SPI_Rx --> S4_Finish_SPI_Rx_Start_SPI_Tx : SPI Interrupt
     S4_Finish_SPI_Rx_Start_SPI_Tx --> S5_Finish_SPI_Tx : SPI Interrupt
     S5_Finish_SPI_Tx --> S0_INIT : I2C Rx Interrupt
-
+```
 
 
 ## Known Issues
